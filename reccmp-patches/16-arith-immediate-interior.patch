@@ -1,0 +1,33 @@
+diff --git a/reccmp/compare/asm/parse.py b/reccmp/compare/asm/parse.py
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ class ParseAsm:
+     PUSH_INTERIOR_ENTITIES = frozenset({"g_worm"})
+ 
++    # EZ2DECOMP patch 16: entities whose INTERIOR an arithmetic immediate may
++    # name (patch 14's opt-in applied to patch 09's operand kind). See
++    # hex_replace_offset_or_address.
++    ARITH_INTERIOR_ENTITIES = frozenset({"g_gfrPos"})
++
+@@ def hex_replace_offset_or_address:
+         if self.lookup(value, exact=True) is not None:
+             return self.replace(value, exact=True)
+ 
+-        if self.lookup(value) is not None:
++        if (interior := self.lookup(value)) is not None:
++            # EZ2DECOMP patch 16: an opted-in entity's interior is named on
++            # both sides - patch 14's rule applied to the arithmetic
++            # immediate. A table whose rows are addressed as
++            # `base + row*stride + pair*8` puts the folded constant part
++            # (an INTERIOR address) in an `add reg, imm`, and the two images
++            # then print two different raw numbers for the same pair.
++            #   g_gfrPos: the GF result readout's position table @0x49b0e8;
++            #             the ctor @0x4682e0 and drawPlayers @0x468050 fold
++            #             pair offsets into the add. (drawPlayers is the
++            #             regression check: 97.62% without this.)
++            base = re.split(r"[+\[ ]", interior, 1)[0]
++            if base in self.ARITH_INTERIOR_ENTITIES:
++                return self.replace(value)
+             return match.group(0)
+ 
+         return self.replace(value)

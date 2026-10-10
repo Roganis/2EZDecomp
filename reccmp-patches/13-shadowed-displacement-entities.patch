@@ -1,0 +1,76 @@
+A TINY ENTITY ABUTTING A BUFFER FROM BELOW IS SHADOWED for register-relative
+displacement resolution.
+
+The ranking replay flag @0x37dd27c is a real 4-byte global (RankingDirector's
+constructor stores to it absolutely), and it sits DIRECTLY below GFBackGround's
+trim buffer @0x37dd280. GFBackGround::videoName tests `buf[strlen(buf) - 4]`,
+and cl folds the -4 into the addressing mode - so the operand's displacement
+lands exactly on the flag's base. Patch 04's exact-base rule then names it
+"g_37dd27c" on the ORIGINAL side, while the recomp side - whose linker did not
+happen to put our flag at our buffer minus 4 - resolves the same operand
+through patch 12 as "g_gfVideoName-4". Identical bytes, different renderings,
+94.03% with nothing wrong.
+
+A blanket "biased naming outranks an exact base" precedence was tried first
+and broke three other functions (set_4184e0 75%, PlayerSlot::m42e620 99.68%,
+GFPanel::m4644c0 97.78%): plenty of genuine `[reg + global]` references have
+some OTHER pinned entity within 8 bytes above them, and the recomp side has no
+matching neighbour, so flipping the precedence globally un-names one side.
+
+The fix is a SHADOW SET keyed by original address. An address in the set:
+  - resolves through patch 12's biased naming instead of by its own name when
+    it appears as a register-relative DISPLACEMENT (both sides then render the
+    operand in the buffer's terms, which is derived from the buffer's own
+    address on each side and therefore always agrees); and
+  - is skipped as a biased TARGET, so `buf[len - 5]` @0x37dd27b scans past the
+    flag (k=1) to the buffer (k=5) instead of resolving as "g_37dd27c-1".
+
+ABSOLUTE operands are untouched: RankingDirector's constructor stores the flag
+with `mov byte ptr ds:0x37dd27c, imm`, which goes through the relocated/
+annotated paths and still resolves as "g_37dd27c" on both sides.
+
+Regression check: GFBackGround::videoName @0x45c470 (94.03% without it, with
+src/rankingctor.cpp's GLOBAL pin at 0x37dd27c present).
+
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ class ParseAsm:
+     # EZ2DECOMP patch 12: how far below an entity's base a displacement may sit
+     # and still be read as a biased reference to it.
+     BIASED_BASE_WINDOW = 8
++
++    # EZ2DECOMP patch 13: entities SHADOWED for register-relative displacement
++    # resolution. Each is a tiny global abutting a buffer from below; a
++    # displacement landing on it is a biased reference to the BUFFER
++    # (`buf[len - k]`), not a reference to the tiny global, and must resolve
++    # through patch 12 so both sides render it in the buffer's terms. The
++    # entity's exact naming stays in force for absolute operands (a different
++    # code path), which is what the functions that really write it produce.
++    #   0x37dd27c: the ranking replay flag, 4 below GFBackGround's trim buffer
++    #              (GFBackGround::videoName's buf[len-4] lands on it).
++    #   0x37dd06c: the total-result fade level, 4 below ResultDirector's own
++    #              trim buffer (m450c00's buf[len-4] lands on it).
++    DISPLACEMENT_SHADOWED = frozenset({0x37DD27C, 0x37DD06C})
+@@ def biased_base_replace(self, value):
+         for k in range(1, self.BIASED_BASE_WINDOW + 1):
++            if value + k in self.DISPLACEMENT_SHADOWED:
++                # patch 13: a shadowed entity cannot be a biased target either -
++                # scan past it to the buffer it abuts.
++                continue
+             name = self.lookup(value + k, exact=True)
+             if name is not None:
+@@ def hex_replace_displacement(self, match):
+         value = int(match.group(1), 16)
+         if value in self.replacements:
+             return self.replacements[value]
+
++        # EZ2DECOMP patch 13: a shadowed tiny entity resolves as a biased
++        # reference to the buffer above it, never by its own name.
++        if value in self.DISPLACEMENT_SHADOWED:
++            biased = self.biased_base_replace(value)
++            if biased is not None:
++                return biased
++
+         # Exact entity start: the real [reg + global] form, safe to name.
+         if self.lookup(value, exact=True) is not None:
+             return self.replace(value, exact=True)

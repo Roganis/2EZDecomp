@@ -1,0 +1,34 @@
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ -101,7 +101,18 @@
+     # EZ2DECOMP patch 16: entities whose INTERIOR an arithmetic immediate may
+     # name (patch 14's opt-in applied to patch 09's operand kind). See
+     # hex_replace_offset_or_address.
+-    ARITH_INTERIOR_ENTITIES = frozenset({"g_gfrPos"})
++    ARITH_INTERIOR_ENTITIES = frozenset({"g_gfrPos", "g_textSlots"})
++
++    # EZ2DECOMP patch 17: entities whose INTERIOR a register-relative
++    # displacement may name. Patch 04 leaves `[reg + X]` raw when X lands
++    # inside an entity, because with a base register X is nearly always a
++    # member offset. An inlined strcpy into `g_textSlots[3]` indexes the
++    # byte with the register and folds the row into X - a genuine interior
++    # address that differs between the images. See hex_replace_displacement.
++    #   g_textSlots: the 32x128 text-slot table @0x1b2ec18; regression
++    #                check InGameSongSelect::m425ea0 @0x425ea0 (99.08%
++    #                without this and patch 16's entry).
++    DISPLACEMENT_INTERIOR_ENTITIES = frozenset({"g_textSlots"})
+ 
+     # EZ2DECOMP patch 15: .text WINDOWS in which a register-relative
+     # displacement or an arithmetic immediate is a struct MEMBER OFFSET, never
+@@ -316,6 +327,11 @@
+             first_term = inside.split("+")[0].strip()
+             has_base_register = bool(first_term) and "*" not in first_term
+             if has_base_register:
++                # EZ2DECOMP patch 17: opted-in entities name their interior
++                # even with a base register.
++                base = re.split(r"[+\[ ]", self.lookup(value), 1)[0]
++                if base in self.DISPLACEMENT_INTERIOR_ENTITIES:
++                    return self.replace(value)
+                 return match.group(0)
+ 
+             return self.replace(value)

@@ -1,0 +1,19 @@
+targets:
+  EZ2AC_UNPACKED:
+    filename: EZ2AC_Unpacked.exe
+    source_root: src
+    hash:
+      sha256: e7d85105b417add292efdc3116e7d2cf73301588f2741dddef93bed107a9ded8
+    data_sources: []
+    encoding:
+    ghidra:
+      ignore_types: []
+      ignore_functions: []
+      name_substitutions: []
+      allow_hash_mismatch: false
+    report:
+      ignore_functions:
+        - mainCRTStartup
+      ignore_variables: []
+      icon:
+    marker_aliases: {}

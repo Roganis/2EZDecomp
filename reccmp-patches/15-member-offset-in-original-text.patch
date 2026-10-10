@@ -1,0 +1,92 @@
+diff --git a/reccmp/compare/asm/parse.py b/reccmp/compare/asm/parse.py
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ -98,6 +98,39 @@ class ParseAsm:
+     #           createWorm pushes &center and &eye.
+     PUSH_INTERIOR_ENTITIES = frozenset({"g_worm"})
+ 
++    # EZ2DECOMP patch 15: .text WINDOWS in which a register-relative
++    # displacement or an arithmetic immediate is a struct MEMBER OFFSET, never
++    # an address.
++    #
++    # Patch 4 already leaves a displacement raw when it only lands INSIDE an
++    # entity, but that test runs after the name lookup, and a FUNCTION interior
++    # never returns a name (create_name_lookup's get_name refuses an offset
++    # name for anything but DATA/OFFSET). The address still passes `is_addr` on
++    # the ORIGINAL side, so it falls through to the <OFFSETn> placeholder -
++    # while the RECOMP side, whose /base puts every real address far above any
++    # offset this program can form, prints the raw number. One side <OFFSET6>,
++    # the other 0x4200f4, and a byte-identical function drops.
++    #
++    # It only bites once some entity covers the address, so ANNOTATING AN
++    # UNRELATED FUNCTION CAN BREAK METHODS OF THE BIG BASE CLASS. Obj40C180
++    # runs to ~0x4202a0, so its `this` offsets sweep straight through the
++    # original's .text just above 0x420000: annotating m41ffa0
++    # @0x41ffa0..0x420130 dropped fourteen of its methods at once, and
++    # m420130 @0x420130..0x4202e6 dropped fifteen more.
++    #
++    # The blanket fix - run patch 4's base-register test ahead of the lookup -
++    # was tried and is WRONG: a switch's byte-index table (`movzx eax, byte ptr
++    # [eax + 0x4214ec]`) has the identical operand shape, is a genuine address,
++    # differs between the two images and NEEDS the placeholder. It cost six
++    # functions. So this is opt-in, like patch 13.
++    #
++    # A WINDOW rather than an address list, because the colliding offsets are
++    # whole runs of one class's members. The rule for adding one: it must be
++    # the span of annotated functions that contain NO jump table of their own,
++    # since a byte-index table inside the window would be suppressed with them.
++    # Neither m41ffa0 nor m420130 has one.
++    DISPLACEMENT_TEXT_COLLISIONS = ((0x41FB20, 0x4202E6),)
++
+     def reset(self):
+         self.replacements = {}
+         self.indirect_replacements = {}
+@@ -175,6 +208,14 @@ class ParseAsm:
+ 
+         return match.group(0)
+ 
++    def _is_text_collision(self, value: int) -> bool:
++        """EZ2DECOMP patch 15. See DISPLACEMENT_TEXT_COLLISIONS above."""
++        for lo, hi in self.DISPLACEMENT_TEXT_COLLISIONS:
++            if lo <= value < hi:
++                return True
++
++        return False
++
+     def biased_base_replace(self, value: int) -> str | None:
+         """EZ2DECOMP patch 12. A displacement that sits a few bytes BELOW an
+         entity's base is a BIASED ARRAY REFERENCE, not a stray number.
+@@ -220,6 +261,13 @@ class ParseAsm:
+         (This engine has a ~0x420000-byte base class, so ordinary member offsets are
+         routinely larger than the image base.)"""
+         value = int(match.group(1), 16)
++
++        # EZ2DECOMP patch 15: a member offset known to collide with the
++        # original's own .text is never an address. Checked first, and ahead of
++        # the cache, so it renders identically however it was reached.
++        if self._is_text_collision(value):
++            return match.group(0)
++
+         if value in self.replacements:
+             return self.replacements[value]
+ 
+@@ -277,8 +325,18 @@ class ParseAsm:
+         INSIDE one, because then the other image has nothing there and one side
+         prints a name against the other's number - a mismatch with identical bytes.
+         (createInput @0x40c250 forms `&this->keyboard` as `add esi, 0x420104`; that
+-        member offset lands inside one of our own recompiled globals.)"""
++        member offset lands inside one of our own recompiled globals.)
++
++        EZ2DECOMP patch 15 applies here too: the same member offset also lands
++        inside the ORIGINAL's .text once a function is annotated over it, and
++        then `lookup` returns nothing (a FUNCTION interior has no offset name)
++        and it falls through to the placeholder on the original side only.
++        createInput is the regression check for BOTH patches."""
+         value = int(match.group(1), 16)
++
++        if self._is_text_collision(value):
++            return match.group(0)
++
+         if not self.is_addr(value):
+             return match.group(0)
+ 

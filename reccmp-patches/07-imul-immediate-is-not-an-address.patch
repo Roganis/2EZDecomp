@@ -1,0 +1,32 @@
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ -24,6 +24,13 @@
+ 
+ 
+ 
++# EZ2DECOMP patch 07: instructions whose immediate operand can only ever be a
++# scale/count, never an address.
++ARITHMETIC_ONLY_IMM_INSTS = frozenset(
++    ["imul", "mul", "idiv", "div", "shl", "shr", "sar", "sal", "rol", "ror", "rcl", "rcr"]
++)
++
++
+ @cache
+ def from_hex(string: str) -> int | None:
+     try:
+@@ -231,6 +238,15 @@
+         # if it is a known address.
+         if inst_mnemonic == "cmp":
+             op_str = immediate_replace_regex.sub(self.hex_replace_annotated, op_str)
++        elif inst_mnemonic in ARITHMETIC_ONLY_IMM_INSTS:
++            # EZ2DECOMP patch 07: the immediate of a multiply or a shift is a
++            # SCALE, never an address, so it must be left alone. This image's
++            # .data is 53 MB, so a large struct stride (addToListA @0x418260
++            # multiplies by 0xe105c4, a 14 MB element size) lands inside some
++            # annotated global and gets "symbolized" as an interior reference to
++            # it - the same class of false positive as patch 04, one operand kind
++            # further along.
++            pass
+         else:
+             op_str = immediate_replace_regex.sub(self.hex_replace_relocated, op_str)
+ 

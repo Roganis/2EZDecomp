@@ -1,0 +1,52 @@
+--- a/reccmp/compare/core.py
++++ b/reccmp/compare/core.py
+@@ -307,22 +307,45 @@
+         ratio = 0.0
+         n_entries = 0
+ 
++        def is_icf_alias(orig: ReccmpEntity, recomp: ReccmpEntity) -> bool:
++            """EZ2DECOMP patch 06 (ICF aliases in vtables). Companion to patch 05
++            in compare/ingest.py: when the ORIGINAL's linker folded several
++            identical functions onto one address and the recomp deliberately does
++            not fold (/opt:noicf), only one of the duplicates can win the match.
++            A vtable slot pointing at one of the others then holds a recomp
++            address that is unmatched, even though it is the same function, byte
++            for byte. Patch 05 gives every such alias the winner's name, so an
++            unmatched recomp entity carrying the matched original's name IS that
++            original by construction."""
++            return (
++                recomp.orig_addr is None
++                and orig.best_name() is not None
++                and orig.best_name() == recomp.best_name()
++            )
++
+         # Now compare each pointer from the two vtables.
+         for i, (raw_orig, raw_recomp) in enumerate(raw_addrs):
+             orig = self._db.get(ImageId.ORIG, raw_orig)
+             recomp = self._db.get(ImageId.RECOMP, raw_recomp)
+ 
+-            if (
++            same = (
+                 orig is not None
+                 and recomp is not None
+-                and orig.recomp_addr == recomp.recomp_addr
+-            ):
++                and (
++                    orig.recomp_addr == recomp.recomp_addr
++                    or is_icf_alias(orig, recomp)
++                )
++            )
++
++            if same:
+                 ratio += 1
+ 
+             n_entries += 1
+             index = f"vtable0x{i*4:02x}"
+             orig_text.append((index, match_text(orig, raw_orig)))
+-            recomp_text.append((index, match_text(recomp)))
++            # Render an ICF alias in the winner's terms so the slot reads the
++            # same on both sides (it is the same function at another address).
++            recomp_text.append((index, match_text(orig if same else recomp)))
+ 
+         ratio = ratio / float(n_entries) if n_entries > 0 else 0.0
+ 

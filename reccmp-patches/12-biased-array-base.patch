@@ -1,0 +1,100 @@
+A displacement a few bytes BELOW an entity's base is a BIASED ARRAY REFERENCE.
+
+cl folds the constant part of `arr[i - k]` into the addressing mode, so the
+operand carries `arr - k` and the effective address is only ever `arr + i`.
+That biased constant points at no entity at all - it is short of the array's
+base - so `is_addr` rejects it and BOTH sides print the raw number. The two
+numbers then differ purely because the two images are based differently, and
+an otherwise byte-identical function can never reach 100%.
+
+Note this is the exact opposite failure to patches 04/07/09/10/11, which
+SUPPRESS naming so that both sides print the same raw number. That works
+because a struct member offset really is the same number in both images. A
+biased array base is not: it is an address, and it has to be NAMED on both
+sides to compare equal.
+
+The check runs BEFORE the is_addr gate, because the biased constant can also
+land inside whatever entity happens to precede the array - which resolves, but
+to the wrong thing, and (thanks to /base) only on the original side.
+
+Regression check: BackGround::videoName @0x41add0, which tests
+`buf[strlen(buf) - 3]`, `- 4` and `- 5` and stores through each of them - six
+operands, 91.04% without this patch with every byte already correct.
+
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ -69,6 +69,10 @@
+         self.replacements: dict[int, str] = {}
+         self.indirect_replacements: dict[int, str] = {}
+         self.number_placeholders = True
+
++    # EZ2DECOMP patch 12: how far below an entity's base a displacement may sit
++    # and still be read as a biased reference to it.
++    BIASED_BASE_WINDOW = 8
++
+     def reset(self):
+         self.replacements = {}
+         self.indirect_replacements = {}
+@@ -152,6 +156,37 @@
+         return match.group(0)
+
++    def biased_base_replace(self, value: int) -> str | None:
++        """EZ2DECOMP patch 12. A displacement that sits a few bytes BELOW an
++        entity's base is a BIASED ARRAY REFERENCE, not a stray number.
++
++        cl folds the constant part of `arr[i - k]` into the addressing mode, so
++        the operand carries `arr - k` and the effective address is only ever
++        `arr + something`. The biased constant therefore points at no entity at
++        all - it is short of the array's base - so `is_addr` rejects it and both
++        sides print the raw number. The two numbers then differ purely because
++        the two images are based differently, and an otherwise byte-identical
++        function can never reach 100%.
++
++        Resolving it as `name-k` renders both sides identically. The window is
++        deliberately tiny: a genuine struct member offset would have to land
++        within a few bytes below one of the annotated globals to be caught by
++        mistake, and unlike the interior case (see below) it cannot happen at
++        all on the recomp side, where `/base` puts every entity far above any
++        offset this program can form.
++
++        (First needed by BackGround::videoName @0x41add0, which tests
++        `buf[strlen(buf) - 3]` three times over.)"""
++        for k in range(1, self.BIASED_BASE_WINDOW + 1):
++            name = self.lookup(value + k, exact=True)
++            if name is not None:
++                replacement = f"{name}-{k}"
++                self.replacements[value] = replacement
++                return replacement
++
++        return None
++
+     def hex_replace_displacement(self, match: re.Match) -> str:
+         """EZ2DECOMP patch. For a REGISTER-RELATIVE displacement `[reg + X]`, X is
+@@ -166,12 +201,22 @@
+         value = int(match.group(1), 16)
+-        if not self.is_addr(value):
+-            return match.group(0)
+-
+-        # Exact entity start: the real [reg + global] form, safe to name.
+-        if self.lookup(value, exact=True) is not None:
+-            return self.replace(value, exact=True)
++        if value in self.replacements:
++            return self.replacements[value]
++
++        # Exact entity start: the real [reg + global] form, safe to name.
++        if self.lookup(value, exact=True) is not None:
++            return self.replace(value, exact=True)
++
++        # EZ2DECOMP patch 12: `arr - k`, the folded constant of `arr[i - k]`.
++        # Checked BEFORE is_addr, because the biased constant can also land
++        # inside whatever entity happens to precede the array - which resolves,
++        # but to the wrong thing, and only on one side.
++        biased = self.biased_base_replace(value)
++        if biased is not None:
++            return biased
++
++        if not self.is_addr(value):
++            return match.group(0)
+
+         # Interior of an entity. Decide from the shape of the memory operand this
+         # displacement belongs to:

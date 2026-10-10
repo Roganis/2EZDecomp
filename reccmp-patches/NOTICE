@@ -1,0 +1,4 @@
+These patches modify reccmp (https://github.com/isledecomp/reccmp), which is
+licensed under the GNU Affero General Public License v3.0 or later. The
+patches are distributed under the same licence (AGPL-3.0-or-later). See
+docs/reccmp-patches.md for what each one does and why.

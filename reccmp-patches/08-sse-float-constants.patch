@@ -1,0 +1,118 @@
+--- a/reccmp/analysis/float_const.py
++++ b/reccmp/analysis/float_const.py
+@@ -1,5 +1,6 @@
+ """Analysis related to x86 floating point instructions.
+-All floating point instructions use two byte opcodes. The first byte is in the range D8 to DF.
++Covers both the x87 instructions and the SSE/SSE2 scalar ones.
++All x87 floating point instructions use two byte opcodes. The first byte is in the range D8 to DF.
+ The second indicates the operation and pointer or registers used.
+ 
+ We are interested in floating point constants, so we want to exclude instructions that:
+@@ -54,6 +55,87 @@
+ )
+ 
+ 
++# SSE / SSE2 scalar instructions that READ a float from a memory operand.
++# Encoding: F3 0F op /r for scalar single, F2 0F op /r for scalar double, and
++# (66) 0F 2E|2F /r for the u/comiss pair. The modrm byte for an absolute
++# 32-bit displacement (mod=00, rm=101) is the same set of bytes as the x87
++# instructions use above, because there the field holds the operation and here
++# the destination register.
++SSE_ARITH_OPCODES = frozenset(
++    [
++        0x10,  # movss / movsd   (0x11, the store form, is deliberately absent)
++        0x51,  # sqrtss / sqrtsd
++        0x58,  # addss / addsd
++        0x59,  # mulss / mulsd
++        0x5A,  # cvtss2sd / cvtsd2ss
++        0x5C,  # subss / subsd
++        0x5D,  # minss / minsd
++        0x5E,  # divss / divsd
++        0x5F,  # maxss / maxsd
++    ]
++)
++
++SSE_COMPARE_OPCODES = frozenset([0x2E, 0x2F])  # ucomiss/ucomisd, comiss/comisd
++
++SSE_ARITH_RE = re.compile(
++    rb"(?=([\xf2\xf3]\x0f[\x10\x51\x58\x59\x5a\x5c\x5d\x5e\x5f]"
++    rb"[\x05\x0d\x15\x1d\x25\x2d\x35\x3d].{4}))",
++    flags=re.S,
++)
++
++SSE_COMPARE_RE = re.compile(
++    rb"(?=(\x0f[\x2e\x2f][\x05\x0d\x15\x1d\x25\x2d\x35\x3d].{4}))",
++    flags=re.S,
++)
++
++
++class SseInstruction(NamedTuple):
++    # The address (or offset) of the instruction
++    address: int
++    # Width of the memory operand in bytes: 4 for scalar single, 8 for double
++    size: int
++    # The address used in the operand
++    pointer: int
++    # The address of the displacement field itself (for the relocation check)
++    pointer_address: int
++
++
++def find_sse_float_instructions_in_buffer(
++    buf: Buffer, base_addr: int = 0
++) -> Iterator[SseInstruction]:
++    """Search the given binary blob for SSE scalar instructions that read a
++    float through an absolute memory operand."""
++    view = memoryview(buf)
++
++    for match in SSE_ARITH_RE.finditer(buf):
++        inst = match.group(1)
++        if inst[2] not in SSE_ARITH_OPCODES:
++            continue
++
++        size = 4 if inst[0] == 0xF3 else 8
++        (pointer,) = struct.unpack("<I", inst[4:8])
++        yield SseInstruction(
++            base_addr + match.start(), size, pointer, base_addr + match.start() + 4
++        )
++
++    for match in SSE_COMPARE_RE.finditer(buf):
++        inst = match.group(1)
++        if inst[1] not in SSE_COMPARE_OPCODES:
++            continue
++
++        # The prefix decides the operand width, and rules out the two-byte
++        # opcodes that only look like a compare because of what precedes them.
++        prefix = view[match.start() - 1] if match.start() > 0 else 0
++        if prefix in (0xF2, 0xF3):
++            continue
++
++        size = 8 if prefix == 0x66 else 4
++        (pointer,) = struct.unpack("<I", inst[3:7])
++        yield SseInstruction(
++            base_addr + match.start(), size, pointer, base_addr + match.start() + 3
++        )
++
++
+ class FloatInstruction(NamedTuple):
+     # The address (or offset) of the instruction
+     address: int
+@@ -122,3 +204,19 @@
+                     # qword ptr -- double precision
+                     (float_value,) = struct.unpack("<d", image.read(inst.pointer, 8))
+                     yield FloatConstant(inst.pointer, 8, float_value)
++
++        for sse in find_sse_float_instructions_in_buffer(region.data, region.addr):
++            if sse.pointer in seen:
++                continue
++
++            seen.add(sse.pointer)
++
++            if image.relocations and sse.pointer_address not in image.relocations:
++                continue
++
++            if any(sse.pointer in region.range for region in const_regions):
++                fmt = "<f" if sse.size == 4 else "<d"
++                (float_value,) = struct.unpack(
++                    fmt, image.read(sse.pointer, sse.size)
++                )
++                yield FloatConstant(sse.pointer, sse.size, float_value)

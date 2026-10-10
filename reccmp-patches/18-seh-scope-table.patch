@@ -1,0 +1,31 @@
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ -101,7 +101,7 @@
+     # EZ2DECOMP patch 16: entities whose INTERIOR an arithmetic immediate may
+     # name (patch 14's opt-in applied to patch 09's operand kind). See
+     # hex_replace_offset_or_address.
+-    ARITH_INTERIOR_ENTITIES = frozenset({"g_gfrPos", "g_textSlots"})
++    ARITH_INTERIOR_ENTITIES = frozenset({"g_gfrPos", "g_textSlots", "_iob"})
+ 
+     # EZ2DECOMP patch 17: entities whose INTERIOR a register-relative
+     # displacement may name. Patch 04 leaves `[reg + X]` raw when X lands
+@@ -544,4 +544,19 @@
+                 for ofs, b in section.contents:
+                     asm.append((ofs, hex(b)))
+ 
++        # EZ2DECOMP patch 18: the CRT's SEH frame setup is
++        # `push size; push <scope table>; call __SEH_prolog`. The scope table
++        # is compiler-generated static .rdata with no symbol in either image,
++        # so the two sides print two different raw numbers for what is the
++        # same table built from the same CRT source. Normalise the push that
++        # immediately precedes that call. (fclose @0x479354 is the regression
++        # check: 96.30% without it; ~38 CRT functions carry the shape.)
++        for i in range(len(asm) - 1):
++            addr, text = asm[i]
++            if (
++                text.startswith("push 0x")
++                and asm[i + 1][1].startswith("call __SEH_prolog")
++            ):
++                asm[i] = (addr, "push <SCOPETABLE>")
++
+         return asm

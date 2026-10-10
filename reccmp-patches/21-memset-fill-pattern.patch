@@ -1,0 +1,41 @@
+--- a/reccmp/compare/asm/parse.py	2026-10-05 19:26:17.074177246 +0200
++++ b/reccmp/compare/asm/parse.py	2026-10-05 19:26:17.089005717 +0200
+@@ -45,6 +45,14 @@
+     return "ptr [" in dest
+ 
+ 
++def _is_fill_pattern(value: int) -> bool:
++    """EZ2DECOMP patch 21: true for a 32-bit value whose four bytes are all
++    equal - the replicated byte cl materializes for an inline memset
++    (`memset(buf, 1, n)` -> `mov eax, 0x01010101; rep stosd`)."""
++    b = value & 0xFF
++    return value == b * 0x01010101
++
++
+ @cache
+ def from_hex(string: str) -> int | None:
+     try:
+@@ -516,6 +524,23 @@
+             op_str = immediate_replace_regex.sub(
+                 self.hex_replace_offset_or_address, op_str
+             )
++        elif (
++            inst_mnemonic == "mov"
++            and (imm := immediate_replace_regex.search(op_str)) is not None
++            and (imm_value := from_hex(imm.group(1))) is not None
++            and _is_fill_pattern(imm_value)
++            and self.lookup(imm_value, exact=True) is None
++        ):
++            # EZ2DECOMP patch 21: `mov reg, 0x01010101` is a memset fill
++            # pattern, not an address - but the ORIGINAL's .data spans
++            # 0x4a5000..0x37e2714, so 0x01010101..0x03030303 land inside
++            # g_tracks and get an OFFSET name on that side only (our /base puts
++            # the recomp image far away, so ours prints raw). Patch 11 leaves
++            # `mov reg, imm` alone on purpose (copyLane @0x412790 loads a real
++            # interior address that way); a byte-replicated value is narrow
++            # enough to exempt. Still named at an entity's exact base.
++            # (KParser::m4133d0 @0x4133d0, memset(data, 1, 0x20000).)
++            pass
+         elif inst_mnemonic in ARITHMETIC_IMM_EXACT_ONLY:
+             # EZ2DECOMP patch 09: an offset that merely lands inside an entity is
+             # not a reference to it. See hex_replace_offset_or_address.

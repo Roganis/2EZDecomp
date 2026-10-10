@@ -1,0 +1,24 @@
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ -231,6 +231,21 @@
+ 
+             if inst_mnemonic == "push":
+                 if self.is_addr(op_str_address):
++                    # EZ2DECOMP patch 10: `push imm` is as often a plain
++                    # constant as an address, and this image's placeholder
++                    # globals are megabytes wide, so an ordinary constant lands
++                    # inside one and gets "symbolized" on our side against the
++                    # original's raw number. Name it when it is an entity's
++                    # EXACT base - the genuine `push &global` / `push "string"`
++                    # form - and leave it raw when it merely lands inside one.
++                    # (screenShot @0x40a7b0 pushes SRCCOPY, 0xcc0020, which fell
++                    # inside a 14 MB placeholder array.)
++                    if self.lookup(op_str_address, exact=True) is not None:
++                        return (inst_mnemonic, self.replace(op_str_address, exact=True))
++
++                    if self.lookup(op_str_address) is not None:
++                        return (inst_mnemonic, inst_op_str)
++
+                     return (inst_mnemonic, self.replace(op_str_address))
+ 
+                 # To avoid falling into jump handling

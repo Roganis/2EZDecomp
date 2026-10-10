@@ -1,0 +1,79 @@
+# === Original binary + game assets — NEVER commit (see CLAUDE.md) ===
+/original/
+
+# Belt-and-suspenders: no shipped binaries anywhere in the tree
+*.exe
+*.dll
+*.bin
+
+# === Build outputs (recompiled binary + PDB live here; reccmp reads them at match time) ===
+/build/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.res
+*.map
+
+# === External tooling — not committed (large / reproducible per CLAUDE.md) ===
+# All toolchains, Ghidra, vendored reccmp+asm-differ, disc images, Wine prefix.
+# Microsoft compiler/SDK bits here are copyrighted — NEVER commit (same rule as ./original/).
+/tools/
+
+# (redundant explicit entries, kept for clarity)
+/tools/2004-*VSPROD*/
+/tools/_vswork/
+/tools/dx8sdk.exe
+/tools/dx8sdk/
+/tools/msvc71/
+/tools/platformsdk/
+*.mdf
+*.mds
+*.iso
+
+# === Reverse-engineering scratch — analysis output, keep out of the repo ===
+# Ghidra install (large, downloadable) and any Ghidra projects / decompiled dumps
+/tools/ghidra_*/
+*.rep/
+*.gpr
+*.lock
+*.gpr.lock
+/ghidra_projects/
+*_decomp.txt
+
+# === Python tooling ===
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# === Editor / OS ===
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# reccmp machine-specific configs
+/reccmp-user.yml
+/reccmp-build.yml
+
+# zoo experiment TUs and their objects (scratchpad/zoo.sh is kept)
+scratchpad/*.cpp
+scratchpad/zoo/
+scratchpad/obj/
+# the raw disassembly the scans parse - regenerate, never commit.
+# ANY objdump listing counts: -D prints the original's bytes as hex, so a
+# per-function dump is a hexdump of .text and must never be committed.
+scratchpad/text.asm
+scratchpad/*.asm
+*.asm
+# decoded/annotated listings are derived from it too
+scratchpad/*.txt
+
+# DJMAX pak inventories (game-derived listings, see ../EZ2-projects/port/DJMAX.md)
+scratchpad/*.tsv
+
+# source permuter output: candidate TUs and their objects (scratchpad/perm/*.py|*.sh are kept)
+scratchpad/perm/out/

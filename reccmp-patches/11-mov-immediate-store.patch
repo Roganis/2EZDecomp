@@ -1,0 +1,35 @@
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ -37,6 +37,14 @@
+ ARITHMETIC_IMM_EXACT_ONLY = frozenset(
+     ["add", "sub", "and", "or", "xor", "adc", "sbb", "test"]
+ )
++
++
++def _stores_to_memory(op_str: str) -> bool:
++    """EZ2DECOMP patch 11: true for `mov <size> ptr [...], imm`, i.e. the
++    destination operand is memory rather than a register."""
++    dest = op_str.split(",", 1)[0]
++    return "ptr [" in dest
+ 
+ 
+ @cache
+@@ -287,6 +295,18 @@
+             # it - the same class of false positive as patch 04, one operand kind
+             # further along.
+             pass
++        elif inst_mnemonic == "mov" and _stores_to_memory(inst_op_str):
++            # EZ2DECOMP patch 11: `mov dword ptr [mem], imm32` stores a CONSTANT far
++            # more often than an address, but it does store real addresses too - a
++            # vptr store is exactly this shape. Same resolution as patches 04/09:
++            # name the immediate when it is an entity's exact base (the vftable
++            # case) and leave it raw when it merely lands INSIDE one (0xffffff, a
++            # 24-bit mask, landing 2.5 MB into g_tracks). `mov reg, imm` is NOT
++            # covered - copyLane @0x412790 loads a genuine interior reference that
++            # way, which is why the blanket rule was reverted when it was tried.
++            op_str = immediate_replace_regex.sub(
++                self.hex_replace_offset_or_address, op_str
++            )
+         elif inst_mnemonic in ARITHMETIC_IMM_EXACT_ONLY:
+             # EZ2DECOMP patch 09: an offset that merely lands inside an entity is
+             # not a reference to it. See hex_replace_offset_or_address.

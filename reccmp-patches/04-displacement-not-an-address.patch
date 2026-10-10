@@ -1,0 +1,60 @@
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ -125,6 +125,48 @@
+ 
+         return match.group(0)
+ 
++    def hex_replace_displacement(self, match: re.Match) -> str:
++        """EZ2DECOMP patch. For a REGISTER-RELATIVE displacement `[reg + X]`, X is
++        usually a struct member offset, not an address. Naming it is only safe when
++        X is the exact base of a known entity - the genuine `[reg + global_base]`
++        form. When X merely lands INSIDE an entity it is almost certainly a member
++        offset that collided with one of the recompiled globals: the other image has
++        nothing there, so one side prints a name and the other the raw number, and
++        the operand can never match even when the encoded bytes are identical.
++        (This engine has a ~0x420000-byte base class, so ordinary member offsets are
++        routinely larger than the image base.)"""
++        value = int(match.group(1), 16)
++        if not self.is_addr(value):
++            return match.group(0)
++
++        # Exact entity start: the real [reg + global] form, safe to name.
++        if self.lookup(value, exact=True) is not None:
++            return self.replace(value, exact=True)
++
++        # Interior of an entity. Decide from the shape of the memory operand this
++        # displacement belongs to:
++        #   [ecx + 0x42026c]        -> has a BASE register (here `this`), so the
++        #                              displacement is a struct member offset that
++        #                              merely collided with one of our globals.
++        #                              Leave it raw so both sides print the number.
++        #   [esi*8 + 0xd9ee38]      -> index*scale only, no base register, so the
++        #                              displacement really is an array base address
++        #                              (an interior reference into a global array).
++        #                              Name it, offset and all.
++        if self.lookup(value) is not None:
++            op_str = match.string
++            open_bracket = op_str.rfind("[", 0, match.start())
++            inside = op_str[open_bracket + 1 : match.start()] if open_bracket >= 0 else ""
++            first_term = inside.split("+")[0].strip()
++            has_base_register = bool(first_term) and "*" not in first_term
++            if has_base_register:
++                return match.group(0)
++
++            return self.replace(value)
++
++        # Resolvable as an address but unnamed: keep the placeholder behaviour.
++        return self.replace(value)
++
+     def hex_replace_indirect(self, match: re.Match) -> str:
+         """Edge case for hex_replace_always. The context of the instruction
+         tells us that the pointer value is an absolute indirect.
+@@ -182,7 +224,7 @@
+             # i.e. ptr [register + something]
+             # Otherwise we would use a placeholder for every stack variable,
+             # vtable call, or this->member access.
+-            op_str = displace_replace_regex.sub(self.hex_replace_relocated, op_str)
++            op_str = displace_replace_regex.sub(self.hex_replace_displacement, op_str)
+ 
+         # In the event of pointer comparison, only replace the immediate value
+         # if it is a known address.

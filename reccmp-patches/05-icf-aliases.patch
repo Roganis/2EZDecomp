@@ -1,0 +1,59 @@
+--- a/reccmp/compare/ingest.py
++++ b/reccmp/compare/ingest.py
+@@ -176,6 +176,10 @@
+             msg=f"Dropped duplicate address 0x{sym.offset:x} on {sym.type.name} annotation in file: {sym.filename}",
+         )
+ 
++    # EZ2DECOMP patch 05 (ICF aliases): filled in by the lineref loop below,
++    # resolved after the batch commits.
++    folded_aliases: list[tuple[int, int]] = []
++
+     # Match lineref functions first because this is a guaranteed match.
+     # If we have two functions that share the same name, and one is
+     # a lineref, we can match the nameref correctly because the lineref
+@@ -195,6 +199,9 @@
+             )
+ 
+             if recomp_addr is not None:
++                if fun.is_folded:
++                    folded_aliases.append((fun.offset, recomp_addr))
++
+                 batch.match(fun.offset, recomp_addr)
+ 
+         for fun in codebase.iter_name_functions():
+@@ -288,6 +295,35 @@
+                 type=EntityType.LINE,
+             )
+ 
++    # EZ2DECOMP patch 05: ICF aliases.
++    #
++    # A `folded` annotation lets several source functions share ONE original
++    # address, because the original's linker folded them together (identical
++    # COMDAT folding). Upstream assumes the recompiled build folds them too, so
++    # a single match covers all of them. That does not hold when the recomp is
++    # deliberately built WITHOUT folding (/opt:noicf, which per-address mapping
++    # otherwise depends on): each duplicate keeps its own recomp address, only
++    # the first one wins the match, and the rest symbolize under their own PDB
++    # names. Any operand referring to them - a call, or a vtable slot - then
++    # differs from the original even when the bytes are identical.
++    #
++    # Give every unmatched duplicate's RECOMP entity the name of the entity that
++    # did win the address, so both sides print the same string. They deliberately
++    # stay unmatched, so they are never scored.
++    if folded_aliases:
++        with db.batch() as batch:
++            for orig_addr, recomp_addr in folded_aliases:
++                if db.is_match(orig_addr, recomp_addr):
++                    continue
++
++                primary = db.get(ImageId.ORIG, orig_addr, exact=True)
++                if primary is None:
++                    continue
++
++                alias_name = primary.best_name()
++                if alias_name is not None:
++                    batch.set(ImageId.RECOMP, recomp_addr, computed_name=alias_name)
++
+ 
+ def load_data_sources(db: EntityDb, data_sources: Iterable[TextFile]):
+     for ds_file in data_sources:

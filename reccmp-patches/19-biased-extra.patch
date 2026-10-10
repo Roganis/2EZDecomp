@@ -1,0 +1,32 @@
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ -74,6 +74,13 @@
+     # and still be read as a biased reference to it.
+     BIASED_BASE_WINDOW = 8
+ 
++    # EZ2DECOMP patch 19: entities whose biased reference sits FURTHER below
++    # the base than BIASED_BASE_WINDOW allows, with the exact bias. Opt-in per
++    # entity name, because a wide window would catch member offsets.
++    #   __lookuptable: the CRT's printf state table, indexed `[ch - ' ']`
++    #                  by _output @0x47b1dc (99.51% without this).
++    BIASED_EXTRA = {"__lookuptable": (0x20,)}
++
+     # EZ2DECOMP patch 13: entities SHADOWED for register-relative displacement
+     # resolution. Each is a tiny global abutting a buffer from below; a
+     # displacement landing on it is a biased reference to the BUFFER
+@@ -265,6 +272,15 @@
+                 self.replacements[value] = replacement
+                 return replacement
+ 
++        # EZ2DECOMP patch 19: the opted-in wider biases.
++        for name, biases in self.BIASED_EXTRA.items():
++            for k in biases:
++                found = self.lookup(value + k, exact=True)
++                if found is not None and found.split(" ")[0] == name:
++                    replacement = f"{found}-{k}"
++                    self.replacements[value] = replacement
++                    return replacement
++
+         return None
+ 
+     def hex_replace_displacement(self, match: re.Match) -> str:

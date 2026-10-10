@@ -1,0 +1,24 @@
+--- a/reccmp/compare/asm/parse.py
++++ b/reccmp/compare/asm/parse.py
+@@ -179,7 +179,20 @@
+         """The placeholder number corresponds to the number of addresses we have
+         already replaced. This is so the number will be consistent across the diff
+         if we can replace some symbols with actual names in recomp but not orig."""
+-        number = len(self.replacements) + len(self.indirect_replacements) + 1
++        # EZ2DECOMP patch 20: count distinct replacement STRINGS, not
++        # addresses. ICF-folded aliases (patch 5) are several addresses on our
++        # side that all print under the winner's name, against ONE address in
++        # the original; counting addresses shifts every later placeholder by
++        # the number of extra aliases called. A name that appears on one side
++        # only still counts once on each side, so the original's design (the
++        # number stays consistent when one side has a name) is kept.
++        # (SongSelectDirector::update @0x443380 calls nine folded page/wheel
++        # aliases; its four jump tables were off by nine without this.)
++        number = (
++            len(set(self.replacements.values()))
++            + len(set(self.indirect_replacements.values()))
++            + 1
++        )
+         return f"<OFFSET{number}>" if self.number_placeholders else "<OFFSET>"
+ 
+     def replace(self, addr: int, exact: bool = False) -> str:

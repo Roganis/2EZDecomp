@@ -1,0 +1,34 @@
+--- a/parse.py.orig	2026-08-18 11:44:00.496707390 +0200
++++ tools/reccmp-0.1.6/reccmp/compare/asm/parse.py	2026-08-18 11:44:00.507154058 +0200
+@@ -85,6 +85,17 @@
+     #              (GFBackGround::videoName's buf[len-4] lands on it).
+     DISPLACEMENT_SHADOWED = frozenset({0x37DD27C})
+ 
++    # EZ2DECOMP patch 14: entities whose INTERIOR a `push imm` may name.
++    # Patch 10 leaves an interior push immediate raw, because a constant that
++    # happens to land inside a placeholder global must not be symbolized -
++    # but a struct whose members are passed by address (`push &g_worm.center`)
++    # produces exactly that shape legitimately, and the two images then print
++    # two different raw numbers for the same member. Opt in per entity NAME so
++    # both sides resolve to `name+off`.
++    #   g_worm: the spline tube @0xd49cb8 (src/kgraphicsworm.cpp), whose
++    #           createWorm pushes &center and &eye.
++    PUSH_INTERIOR_ENTITIES = frozenset({"g_worm"})
++
+     def reset(self):
+         self.replacements = {}
+         self.indirect_replacements = {}
+@@ -317,7 +328,12 @@
+                     if self.lookup(op_str_address, exact=True) is not None:
+                         return (inst_mnemonic, self.replace(op_str_address, exact=True))
+ 
+-                    if self.lookup(op_str_address) is not None:
++                    if (interior := self.lookup(op_str_address)) is not None:
++                        # EZ2DECOMP patch 14: an opted-in entity's interior
++                        # is named on both sides (see PUSH_INTERIOR_ENTITIES).
++                        base = interior.split("+")[0].split(" ")[0]
++                        if base in self.PUSH_INTERIOR_ENTITIES:
++                            return (inst_mnemonic, self.replace(op_str_address))
+                         return (inst_mnemonic, inst_op_str)
+ 
+                     return (inst_mnemonic, self.replace(op_str_address))
