@@ -1,0 +1,14 @@
+{
+ "n": 1474,
+ "n_matched": 1300,
+ "code_bytes": 495930,
+ "matched_bytes": 309969,
+ "code_pct": 62.502570927348614,
+ "avg_similarity": 97.56971293855382,
+ "tier_counts": [
+  1300,
+  38,
+  36,
+  100
+ ]
+}

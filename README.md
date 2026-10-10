@@ -1,5 +1,8 @@
 # 2EZDecomp
 
+![code matched](docs/progress/badge-matched.svg)
+![functions decompiled](docs/progress/badge-decompiled.svg)
+
 A **matching decompilation** of a 2000s PC-based arcade rhythm game:
 C/C++ source reconstructed so that, built with the original toolchain
 (Microsoft Visual C++ 7.1, `cl.exe` 13.10.3077), each function compiles to the
@@ -13,6 +16,34 @@ The project is not affiliated with, endorsed by, or connected to the game's
 developers or rights holders. Any product names that appear in the source or
 docs refer to the original software and are the property of their owners.
 
+## Progress
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/progress/progress-dark.svg">
+  <img alt="Progress map: the game's code in address order, one cell per 64 bytes, coloured by how closely each function matches. 62.5% of the code is byte-identical." src="docs/progress/progress-light.svg">
+</picture>
+
+Every function in the game has decompiled C. The map shows how much of it
+already compiles to **exactly** the original bytes: each cell is 64 bytes of
+the original code, in address order, coloured by its function's match.
+
+| | |
+|---|---|
+| Functions decompiled | **1474 / 1474** (100%) |
+| Functions byte-identical | **1300 / 1474** (88.2%) |
+| Code byte-identical | **62.5%** (309,969 of 495,930 bytes) |
+| Average similarity (reccmp) | **97.6%** |
+
+The byte share trails the function count because the largest functions
+(screen directors, the game loop) are the hardest to match. Figures are
+regenerated with `scratchpad/progress.py` (see `CONTRIBUTING.md`).
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md): how to pick a target, read a diff,
+use the codegen cookbook and the source permuter, and check that a change
+keeps the behaviour.
+
 ## Layout
 
 | Path | What it is |
@@ -24,6 +55,7 @@ docs refer to the original software and are the property of their owners.
 | `scratchpad/fmt/` | runs the decomp's own file-format code on the user's game data and diffs it against an independent decoder |
 | `reccmp-patches/` | patches to reccmp used by this project (AGPL-3.0, see that folder) |
 | `wip/` | analysis notes |
+| `docs/progress/` | the progress map, badges and figures (`scratchpad/progress.py`) |
 | `CLAUDE.md` | the working rules and conventions of the project |
 
 ## Building and matching
