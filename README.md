@@ -22,7 +22,6 @@ The matching target is one specific build. Identify yours before building:
 
 | | |
 |---|---|
-| Game | EZ2AC : FINAL EX |
 | Version | **2.05**: shown as "Version 2.05" on the test-mode screens (the build number `205` at `0x4a8d6c`) |
 | Build date | 2021-07-30 (PE timestamp) |
 | Data version | `GameVersion = 150` in `system/title/Common/version.ini` (written to the log as "Game Version = 150") |
