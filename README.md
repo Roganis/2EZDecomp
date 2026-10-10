@@ -16,6 +16,22 @@ The project is not affiliated with, endorsed by, or connected to the game's
 developers or rights holders. Any product names that appear in the source or
 docs refer to the original software and are the property of their owners.
 
+## Target
+
+The matching target is one specific build. Identify yours before building:
+
+| | |
+|---|---|
+| Game | EZ2AC : FINAL EX |
+| Version | **2.05**: shown as "Version 2.05" on the test-mode screens (the build number `205` at `0x4a8d6c`) |
+| Build date | 2021-07-30 (PE timestamp) |
+| Data version | `GameVersion = 150` in `system/title/Common/version.ini` (written to the log as "Game Version = 150") |
+| Executable SHA-256 | `858ca451ca16225ce56d7b902c61f2c7bb813d8c65b85131d85e77fb566af833` (as shipped, `EZ2AC.exe`) |
+| Matching image SHA-256 | `e7d85105b417add292efdc3116e7d2cf73301588f2741dddef93bed107a9ded8` (`original/EZ2AC_Unpacked.exe`, the unpacked image reccmp compares against; also in `reccmp-project.yml`) |
+
+The shipped executable is packed. The unpacked image must be produced from
+your own copy; this repository does not include one or describe how.
+
 ## Progress
 
 <picture>
